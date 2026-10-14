@@ -110,7 +110,7 @@ class OrderEmailContentTest extends IntegrationTest {
                 .andExpect(status().isOk()).andReturn();
         Cookie cart = added.getResponse().getCookie("guest_cart_id");
         var billing = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null, null, null);
         mvc.perform(post("/api/checkout")
                         .cookie(csrf, cart).header("X-XSRF-TOKEN", csrf.getValue())
                         .header("Idempotency-Key", UUID.randomUUID().toString())

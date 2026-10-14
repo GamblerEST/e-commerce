@@ -94,6 +94,12 @@ services:
       MAIL_PORT: ${MAIL_PORT}
       MAIL_USER: ${MAIL_USER}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      # Bank-link payments through Montonio. Off unless MONTONIO_ENABLED=true; when on,
+      # these two plus deploy/secrets/montonio_secret_key are required and the backend
+      # refuses to start without them (MontonioProperties).
+      MONTONIO_ENABLED: ${MONTONIO_ENABLED:-false}
+      MONTONIO_API_URL: ${MONTONIO_API_URL:-}
+      MONTONIO_ACCESS_KEY: ${MONTONIO_ACCESS_KEY:-}
       # Secrets are NOT passed as env vars. Env vars leak: `docker inspect`
       # prints them, they appear in crash dumps, and every child process
       # inherits them. Instead they are mounted as files under /run/secrets
@@ -116,6 +122,7 @@ services:
       - recaptcha_secret
       - stripe_secret_key
       - stripe_webhook_secret
+      - montonio_secret_key
     volumes:
       # Uploaded product images (ProductImageController). Deliberately NOT
       # the same path as the bundled placeholder SVGs, which live inside the
@@ -234,3 +241,5 @@ secrets:
     file: ./deploy/secrets/stripe_secret_key
   stripe_webhook_secret:
     file: ./deploy/secrets/stripe_webhook_secret
+  montonio_secret_key:
+    file: ./deploy/secrets/montonio_secret_key

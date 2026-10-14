@@ -11,7 +11,6 @@ import ee.shop.order.repository.BillingDocumentRepository;
 import ee.shop.order.repository.OrderEventRepository;
 import ee.shop.order.repository.OrderRepository;
 import ee.shop.order.web.dto.OrderResponse;
-import ee.shop.payment.service.PaymentService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,7 +42,7 @@ public class AdminOrderService {
 
     private final OrderRepository orders;
     private final OrderEventRepository orderEvents;
-    private final PaymentService payments;
+    private final OrderRefunds refunds;
     private final OrderService orderService;
     private final MailService mail;
     private final InvoiceService invoices;
@@ -51,12 +50,12 @@ public class AdminOrderService {
     private final UserRepository users;
 
     public AdminOrderService(OrderRepository orders, OrderEventRepository orderEvents,
-                              PaymentService payments, OrderService orderService, MailService mail,
+                              OrderRefunds refunds, OrderService orderService, MailService mail,
                               InvoiceService invoices, BillingDocumentRepository billingDocuments,
                               UserRepository users) {
         this.orders = orders;
         this.orderEvents = orderEvents;
-        this.payments = payments;
+        this.refunds = refunds;
         this.orderService = orderService;
         this.mail = mail;
         this.invoices = invoices;
@@ -142,14 +141,18 @@ public class AdminOrderService {
 
     /**
      * Staff-initiated refund. Same mechanics as the customer's own
-     * cancel-after-payment path (real Stripe refund, then a REFUNDED event) —
-     * but reachable for an order the caller does not own, which is the whole
-     * reason support exists.
+     * cancel-after-payment path (a real refund through whichever provider took
+     * the payment, then an event recording it) — but reachable for an order the
+     * caller does not own, which is the whole reason support exists.
      *
-     * Deliberately NOT @Transactional at this level: PaymentService's contract
-     * is that Stripe calls must not run inside an open database transaction.
-     * Each step below is independently atomic and idempotent, so a crash
-     * between them leaves a recoverable state rather than a half-refund.
+     * A card refund is REFUNDED at once. A bank-link refund is REFUND_REQUESTED
+     * until Montonio settles it (BankLinkRefundReconciler), and while it is, the
+     * status check below refuses a second one.
+     *
+     * Deliberately NOT @Transactional at this level: calls to a payment provider
+     * must not run inside an open database transaction. Each step below is
+     * independently atomic and idempotent, so a crash between them leaves a
+     * recoverable state rather than a half-refund.
      */
     public OrderResponse refund(UUID orderId) {
         orders.findById(orderId).orElseThrow(() -> AppException.notFound("Order not found"));
@@ -158,15 +161,20 @@ public class AdminOrderService {
             throw AppException.conflict(
                     "Only a paid, shipped or delivered order can be refunded (this one is " + status + ")");
         }
-        payments.refundForOrder(orderId);
-        orderEvents.save(new OrderEvent(orderId, OrderEvent.Type.REFUNDED));
+        OrderRefunds.Outcome outcome = refunds.refund(orderId);
+        boolean settled = outcome == OrderRefunds.Outcome.REFUNDED;
+        orderEvents.save(new OrderEvent(orderId, settled
+                ? OrderEvent.Type.REFUNDED
+                : OrderEvent.Type.REFUND_REQUESTED));
         OrderResponse refunded = orderService.findById(orderId).orElseThrow();
-        mail.send(refunded.billingEmail(), "Your refund was processed",
-                "We have refunded " + refunded.total() + " " + refunded.currency() + " for order "
+        mail.send(refunded.billingEmail(),
+                settled ? "Your refund was processed" : "Your refund was requested",
+                (settled ? "We have refunded " : "We have asked your bank to refund ")
+                        + refunded.total() + " " + refunded.currency() + " for order "
                         + refunded.reference() + ".\n\n" + OrderMailFormatter.summary(refunded)
                         + "\n\nThe money should reach your original payment method within a few business "
                         + "days, depending on your bank.",
-                "order-refunded");
+                settled ? "order-refunded" : "order-refund-requested");
         return refunded;
     }
 
@@ -177,7 +185,8 @@ public class AdminOrderService {
      */
     private static final Set<String> BILLED_STATUSES = Set.of(
             OrderEvent.Type.PAID.name(), OrderEvent.Type.SHIPPED.name(),
-            OrderEvent.Type.DELIVERED.name(), OrderEvent.Type.REFUNDED.name());
+            OrderEvent.Type.DELIVERED.name(), OrderEvent.Type.REFUND_REQUESTED.name(),
+            OrderEvent.Type.REFUNDED.name());
 
     /** A delivered order can still come back (a withdrawal, a fault), so it stays refundable. */
     private static final Set<String> REFUNDABLE_STATUSES = Set.of(

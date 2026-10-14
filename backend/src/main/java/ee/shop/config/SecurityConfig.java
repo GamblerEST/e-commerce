@@ -212,6 +212,20 @@ public class SecurityConfig {
                 // browser and no cookie in this request at all.
                 .requestMatchers(HttpMethod.POST, "/api/stripe/webhook").permitAll()
 
+                // What checkout can offer. Guests pay too, and the answer holds
+                // nothing but whether cards are on and which banks Montonio lists.
+                .requestMatchers(HttpMethod.GET, "/api/payments/methods").permitAll()
+
+                // Bank-link results: Montonio posts the first, the customer's browser
+                // brings the second back from the bank, and neither can carry our
+                // credentials. Both carry a token signed with the store's secret key,
+                // verified before any field in it is read (BankLinkPaymentService.
+                // acceptResult). Like the Stripe webhook, neither is in
+                // csrfRequiredMatcher(): no ambient cookie grants anything here, the
+                // signed token is the whole credential.
+                .requestMatchers(HttpMethod.POST, "/api/payments/bank-link/notification",
+                        "/api/payments/bank-link/return").permitAll()
+
                 // OpenAPI spec + Swagger UI: documentation, not data — same
                 // public reasoning as the catalog API itself.
                 .requestMatchers(HttpMethod.GET, "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()

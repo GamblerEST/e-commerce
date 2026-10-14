@@ -103,6 +103,11 @@ public class PaymentService {
         return payments.findByStripePaymentIntentId(stripePaymentIntentId).map(Payment::getOrderId);
     }
 
+    /** Whether a card payment was ever started for the order. A database lookup, no call to Stripe. */
+    public boolean hasCardPayment(UUID orderId) {
+        return payments.findFirstByOrderIdOrderByCreatedAtDesc(orderId).isPresent();
+    }
+
     /**
      * For an idempotent checkout REPLAY (same Idempotency-Key resubmitted):
      * the order already exists, so this must NOT create a second

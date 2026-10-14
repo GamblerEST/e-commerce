@@ -88,7 +88,7 @@ class OrderControllerTest extends IntegrationTest {
                 .andExpect(status().isOk());
 
         var billing = new CheckoutRequest("Order Test User", "order-test@test.ee", "+372 5555 5555", "Pikk tn 1", null,
-                "Tallinn", "10123", "EE", null, null);
+                "Tallinn", "10123", "EE", null, null, null, null);
         MvcResult result = mvc.perform(post("/api/checkout")
                         .header("Authorization", "Bearer " + accessToken)
                         .cookie(csrf).header(CSRF_HEADER, csrf.getValue())

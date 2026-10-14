@@ -81,7 +81,7 @@ class CheckoutControllerTest extends IntegrationTest {
 
     private CheckoutRequest billingAddress() {
         return new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555", "Pikk tn 1", null,
-                "Tallinn", "10123", "EE", null, null);
+                "Tallinn", "10123", "EE", null, null, null, null);
     }
 
     private OrderResponse checkoutAsGuest(Cookie csrf, Cookie guestCart, String idempotencyKey) throws Exception {
@@ -114,7 +114,7 @@ class CheckoutControllerTest extends IntegrationTest {
     void checkout_missingRequiredField_isRejectedWithSpecificMessage() throws Exception {
         Cookie csrf = primeCsrf();
         CheckoutRequest blankName = new CheckoutRequest("", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null, null, null);
 
         postCheckout(csrf, blankName)
                 .andExpect(status().isBadRequest())
@@ -125,7 +125,7 @@ class CheckoutControllerTest extends IntegrationTest {
     void checkout_invalidEmailFormat_isRejectedWithSpecificMessage() throws Exception {
         Cookie csrf = primeCsrf();
         CheckoutRequest badEmail = new CheckoutRequest("Jaan Tamm", "not-an-email", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null, null, null);
 
         postCheckout(csrf, badEmail)
                 .andExpect(status().isBadRequest())
@@ -136,7 +136,7 @@ class CheckoutControllerTest extends IntegrationTest {
     void checkout_invalidPhoneFormat_isRejectedWithSpecificMessage() throws Exception {
         Cookie csrf = primeCsrf();
         CheckoutRequest badPhone = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "call me maybe",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null, null, null);
 
         postCheckout(csrf, badPhone)
                 .andExpect(status().isBadRequest())
@@ -157,7 +157,7 @@ class CheckoutControllerTest extends IntegrationTest {
         UUID productId = insertProduct("Farmstead Delivery Widget", new BigDecimal("15.00"), 5);
         Cookie guestCart = addToGuestCart(csrf, productId, 1);
         CheckoutRequest farmstead = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Männiku talu", null, "Rõngu", "61001", "EE", null, null);
+                "Männiku talu", null, "Rõngu", "61001", "EE", null, null, null, null);
 
         mvc.perform(post("/api/checkout")
                         .cookie(csrf, guestCart).header(CSRF_HEADER, csrf.getValue())
@@ -171,7 +171,7 @@ class CheckoutControllerTest extends IntegrationTest {
     void checkout_cityContainingDigits_isRejectedWithSpecificMessage() throws Exception {
         Cookie csrf = primeCsrf();
         CheckoutRequest badCity = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn123", "10123", "EE", null, null);
+                "Pikk tn 1", null, "Tallinn123", "10123", "EE", null, null, null, null);
 
         postCheckout(csrf, badCity)
                 .andExpect(status().isBadRequest())
@@ -186,7 +186,7 @@ class CheckoutControllerTest extends IntegrationTest {
         // which isolates the country-aware check. Estonian postal codes are
         // exactly five digits.
         CheckoutRequest badPostal = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "12345x", "EE", null, null);
+                "Pikk tn 1", null, "Tallinn", "12345x", "EE", null, null, null, null);
 
         postCheckout(csrf, badPostal)
                 .andExpect(status().isBadRequest())
@@ -200,7 +200,7 @@ class CheckoutControllerTest extends IntegrationTest {
     void checkout_invalidCountryCode_isRejectedWithSpecificMessage() throws Exception {
         Cookie csrf = primeCsrf();
         CheckoutRequest badCountry = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "e3", null, null);
+                "Pikk tn 1", null, "Tallinn", "10123", "e3", null, null, null, null);
 
         postCheckout(csrf, badCountry)
                 .andExpect(status().isBadRequest())
@@ -411,7 +411,7 @@ class CheckoutControllerTest extends IntegrationTest {
 
     private CheckoutRequest registerAddress(String line1, String postalCode, String adsOid) {
         return new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555", line1, null,
-                "Tallinn", postalCode, "EE", null, adsOid);
+                "Tallinn", postalCode, "EE", null, adsOid, null, null);
     }
 
     private ResultActions checkoutAsGuestWith(Cookie csrf, Cookie guestCart, String idempotencyKey,

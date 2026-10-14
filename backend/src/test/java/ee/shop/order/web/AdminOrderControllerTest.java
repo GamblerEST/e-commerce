@@ -88,7 +88,7 @@ class AdminOrderControllerTest extends IntegrationTest {
         Cookie cart = added.getResponse().getCookie(GUEST_CART_COOKIE);
 
         var billing = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null, null, null);
         MvcResult checkout = mvc.perform(post("/api/checkout")
                         .cookie(csrf, cart).header(CSRF_HEADER, csrf.getValue())
                         .header("Idempotency-Key", UUID.randomUUID().toString())

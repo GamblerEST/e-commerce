@@ -57,5 +57,13 @@ public record CheckoutRequest(
         // the customer picked a suggestion. The server re-checks the fields
         // against it (AddressLookupService.verifySelected); absent means a typed
         // address, validated the ordinary way.
-        @Pattern(regexp = "^[A-Z]{2}[0-9]{8}$", message = "must be an address register id") String adsOid
-) {}
+        @Pattern(regexp = "^[A-Z]{2}[0-9]{8}$", message = "must be an address register id") String adsOid,
+        // How the customer pays. Null means CARD, which is what checkout did before
+        // bank links existed.
+        PaymentMethod paymentMethod,
+        // The bank for a BANK_LINK payment: one of the codes GET /api/payments/methods
+        // lists, checked against that list before anything is reserved.
+        @Size(max = 40) @Pattern(regexp = "^[A-Za-z0-9_-]+$", message = "must be a bank code") String bankCode
+) {
+    public enum PaymentMethod { CARD, BANK_LINK }
+}

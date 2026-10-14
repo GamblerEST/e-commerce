@@ -37,6 +37,8 @@ public class RateLimitService {
     /** Public, unauthenticated, and sends mail — an open relay without this. */
     public void enforceContact(String ip)        { enforce("contact", ip, props.contact()); }
     public void enforceAddressLookup(String ip) { enforce("address_lookup", ip, props.addressLookup()); }
+    /** Consumes a signed payment result the customer's browser brings back from the bank. */
+    public void enforceBankLinkReturn(String ip) { enforce("bank_link_return", ip, props.bankLinkReturn()); }
     public void enforceRegister(String ip)       { enforce("register", ip, props.register()); }
     public void enforceLogin(String ip)          { enforce("login", ip, props.login()); }
     public void enforceRefresh(String ip)        { enforce("refresh", ip, props.refresh()); }

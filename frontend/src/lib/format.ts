@@ -85,6 +85,7 @@ export type StatusTone = 'good' | 'bad' | 'warn' | 'neutral';
 export function orderStatusTone(status: string): StatusTone {
   if (status === 'PAID' || status === 'SHIPPED' || status === 'DELIVERED') return 'good';
   if (status === 'CANCELLED' || status === 'PAYMENT_FAILED' || status === 'REFUNDED') return 'bad';
-  if (status === 'CREATED') return 'warn';
+  // Accepted by the bank but not settled yet, and it can still be rejected.
+  if (status === 'CREATED' || status === 'REFUND_REQUESTED') return 'warn';
   return 'neutral';
 }

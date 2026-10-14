@@ -4,10 +4,12 @@ import type { AdminOrderSummary, BillingDocumentView, OrderResponse } from '../.
 import { formatDate, formatMoney, orderStatusTone } from '../../lib/format';
 import { AdminError, AdminNotice, Button, Field, Pill, TableWrap, Td, Th, inputClass } from './ui';
 
-const STATUSES = ['', 'CREATED', 'PAID', 'PAYMENT_FAILED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
+const STATUSES = [
+  '', 'CREATED', 'PAID', 'PAYMENT_FAILED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUND_REQUESTED', 'REFUNDED',
+];
 
 // An order can only have a billing document once it was actually paid at some point.
-const BILLED = ['PAID', 'SHIPPED', 'DELIVERED', 'REFUNDED'];
+const BILLED = ['PAID', 'SHIPPED', 'DELIVERED', 'REFUND_REQUESTED', 'REFUNDED'];
 
 // A delivered order can still come back (a withdrawal, a fault), so it stays refundable.
 const REFUNDABLE = ['PAID', 'SHIPPED', 'DELIVERED'];

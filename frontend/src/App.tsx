@@ -20,6 +20,7 @@ import ProductListPage from './pages/ProductListPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
+import BankLinkReturnPage from './pages/BankLinkReturnPage';
 import OrdersPage from './pages/OrdersPage';
 import OrderDetailPage from './pages/OrderDetailPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -76,6 +77,7 @@ function AppShell() {
           <Route path="/account" element={<AccountPage />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/checkout/bank-link/return" element={<BankLinkReturnPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/:id" element={<OrderDetailPage />} />
           {/* Admin. Nested so the shell (role guard + section nav) renders

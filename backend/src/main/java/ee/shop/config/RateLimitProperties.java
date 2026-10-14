@@ -16,7 +16,7 @@ public record RateLimitProperties(
         Limit register, Limit login, Limit refresh, Limit forgotPassword,
         Limit verifyEmail, Limit passwordReset,
         Limit checkout, Limit cartMutation, Limit productSearch, Limit contact,
-        Limit addressLookup
+        Limit addressLookup, Limit bankLinkReturn
 ) {
     public record Limit(int capacity, Duration period) {}
 }

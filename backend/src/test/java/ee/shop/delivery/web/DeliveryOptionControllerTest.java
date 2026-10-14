@@ -76,7 +76,7 @@ class DeliveryOptionControllerTest extends IntegrationTest {
 
     private OrderResponse checkout(Cookie csrf, Cookie cart, String deliveryCode) throws Exception {
         var billing = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", deliveryCode, null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", deliveryCode, null, null, null);
         MvcResult result = mvc.perform(post("/api/checkout")
                         .cookie(csrf, cart).header(CSRF_HEADER, csrf.getValue())
                         .header("Idempotency-Key", UUID.randomUUID().toString())
@@ -224,7 +224,7 @@ class DeliveryOptionControllerTest extends IntegrationTest {
         Cookie cart = addToGuestCart(csrf, productId);
 
         var billing = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", "retired_test", null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", "retired_test", null, null, null);
         mvc.perform(post("/api/checkout")
                         .cookie(csrf, cart).header(CSRF_HEADER, csrf.getValue())
                         .header("Idempotency-Key", UUID.randomUUID().toString())
@@ -244,7 +244,7 @@ class DeliveryOptionControllerTest extends IntegrationTest {
         Cookie cart = addToGuestCart(csrf, productId);
 
         var billing = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", "does_not_exist", null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", "does_not_exist", null, null, null);
         mvc.perform(post("/api/checkout")
                         .cookie(csrf, cart).header(CSRF_HEADER, csrf.getValue())
                         .header("Idempotency-Key", UUID.randomUUID().toString())

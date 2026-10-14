@@ -63,7 +63,7 @@ class RateLimitServiceTest extends IntegrationTest {
         // want — a new limit that nobody wired up here would otherwise be
         // untested.
         RateLimitProperties props = new RateLimitProperties(
-                small, small, small, small, small, small, small, small, small, small, small);
+                small, small, small, small, small, small, small, small, small, small, small, small);
         service = new RateLimitService(proxyManager, props);
     }
 

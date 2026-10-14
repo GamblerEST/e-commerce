@@ -92,13 +92,20 @@ export default function PrivacyPolicyPage() {
       <section className="mt-8 mb-8">
         <h2 className="text-h3 font-extrabold text-ink">Third parties</h2>
         <p className="mt-3 text-ink">
-          Three companies and one public authority receive some of your data when you use this
+          Four companies and one public authority receive some of your data when you use this
           shop, each for one specific purpose and under its own privacy policy:
         </p>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-ink">
           <li>
             <strong>Stripe</strong> processes card payments. Your card details go directly to
             Stripe and never reach our servers.
+          </li>
+          <li>
+            <strong>Montonio</strong> processes bank-link payments. When you pay through your bank
+            you leave this shop for your bank's own pages, and Montonio tells us whether the
+            payment went through. That answer can include the name and account number the payment
+            came from; we do not keep them. We send Montonio the order reference and amount, not
+            your name or address.
           </li>
           <li>
             <strong>Google</strong> receives your IP address and browser information when the

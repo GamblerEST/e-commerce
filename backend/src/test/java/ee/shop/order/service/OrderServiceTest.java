@@ -70,7 +70,7 @@ class OrderServiceTest extends IntegrationTest {
         Cookie guestCart = cookie(addResult, GUEST_CART_COOKIE);
 
         var billing = new CheckoutRequest("Mark Paid Tester", "markpaid@test.ee", "+372 5555 5555", "Pikk tn 1", null,
-                "Tallinn", "10123", "EE", null, null);
+                "Tallinn", "10123", "EE", null, null, null, null);
         MvcResult result = mvc.perform(post("/api/checkout")
                         .cookie(csrf, guestCart).header(CSRF_HEADER, csrf.getValue())
                         .header("Idempotency-Key", UUID.randomUUID().toString())

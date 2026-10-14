@@ -148,7 +148,7 @@ class AdminCatalogControllerTest extends IntegrationTest {
                 .andExpect(status().isOk());
 
         var billing = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null, null, null);
         mvc.perform(post("/api/checkout")
                         .header("Authorization", "Bearer " + shopper)
                         .cookie(csrf).header(CSRF_HEADER, csrf.getValue())

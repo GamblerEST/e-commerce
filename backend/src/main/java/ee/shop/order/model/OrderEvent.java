@@ -20,7 +20,14 @@ import java.util.UUID;
 public class OrderEvent {
 
     public enum Type {
-        CREATED, PAID, PAYMENT_FAILED, CANCELLED, SHIPPED, DELIVERED, REFUNDED,
+        CREATED, PAID, PAYMENT_FAILED, CANCELLED, SHIPPED, DELIVERED,
+        /**
+         * A refund the payment provider has accepted but not yet completed. Bank-link
+         * refunds settle days later and can be rejected, so the order says what is
+         * actually true in the meantime instead of REFUNDED.
+         */
+        REFUND_REQUESTED,
+        REFUNDED,
         /**
          * Informational only: a billing document was (re)issued. Recorded so it
          * shows in the admin order timeline, but it must never become the

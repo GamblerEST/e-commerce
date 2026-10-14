@@ -9,7 +9,9 @@ import { formatDate, formatMoney, orderStatusTone } from '../lib/format';
 
 // Mirrors ee.shop.order.model.OrderEvent.Type — the derived status values an
 // order can actually show (OrderController's ?status= filter matches one of these).
-const STATUSES = ['CREATED', 'PAID', 'PAYMENT_FAILED', 'CANCELLED', 'SHIPPED', 'DELIVERED', 'REFUNDED'];
+const STATUSES = [
+  'CREATED', 'PAID', 'PAYMENT_FAILED', 'CANCELLED', 'SHIPPED', 'DELIVERED', 'REFUND_REQUESTED', 'REFUNDED',
+];
 
 const FIELD_CLASS = 'rounded-field border border-hairline bg-surface px-3 py-2 text-sm text-ink';
 

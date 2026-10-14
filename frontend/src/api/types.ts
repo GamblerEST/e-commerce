@@ -193,6 +193,10 @@ export interface CheckoutRequest {
    * against it.
    */
   adsOid?: string | null;
+  /** CARD by default. BANK_LINK sends the customer to their bank through Montonio. */
+  paymentMethod?: 'CARD' | 'BANK_LINK' | null;
+  /** The bank chosen from PaymentMethodsResponse.banks; required for BANK_LINK. */
+  bankCode?: string | null;
 }
 
 export interface OrderLineResponse {
@@ -246,6 +250,8 @@ export interface OrderResponse {
   createdAt: string;
   /** Only populated on the response CheckoutController returns right after creating a fresh PaymentIntent — null on list/detail views, or if Stripe isn't configured. */
   paymentClientSecret: string | null;
+  /** The customer's bank payment page, on the response to a BANK_LINK checkout only. */
+  paymentRedirectUrl: string | null;
 }
 
 export interface OrderSummaryResponse {
@@ -470,4 +476,31 @@ export interface AddressSuggestion {
   apartment: string;
   /** Every flat registered in this building, e.g. ["1", "2", "3"]; empty when none are on record. */
   apartmentOptions: string[];
+}
+
+// ── Payments ─────────────────────────────────────────────────────────────
+
+export interface BankOption {
+  code: string;
+  name: string;
+}
+
+/** What checkout can offer right now. */
+export interface PaymentMethodsResponse {
+  card: boolean;
+  bankLink: boolean;
+  banks: BankOption[];
+}
+
+/**
+ * What the customer sees on returning from their bank. Deliberately no name,
+ * email or address: the page is reached with a token, not an account.
+ */
+export interface BankLinkReturnResponse {
+  reference: string;
+  status: 'PAID' | 'PENDING' | 'FAILED';
+  total: string;
+  currency: string;
+  lines: { productName: string; quantity: number }[];
+  delivery: DeliveryDetails | null;
 }

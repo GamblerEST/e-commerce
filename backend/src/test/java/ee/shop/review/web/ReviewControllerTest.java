@@ -95,7 +95,7 @@ class ReviewControllerTest extends IntegrationTest {
         assertThat(added.getResponse().getStatus()).isEqualTo(200);
 
         var billing = new CheckoutRequest("Jaan Tamm", "jaan@test.ee", "+372 5555 5555",
-                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null);
+                "Pikk tn 1", null, "Tallinn", "10123", "EE", null, null, null, null);
         MvcResult checkout = mvc.perform(post("/api/checkout")
                         .header("Authorization", "Bearer " + account.token())
                         .cookie(csrf).header(CSRF_HEADER, csrf.getValue())

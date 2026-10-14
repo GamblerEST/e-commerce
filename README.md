@@ -68,11 +68,14 @@ write it correctly.
 - **Shopping:** browse and search products with filters and sorting, add to a
   cart as a guest or signed in (the cart merges on login), and check out.
 - **Payments:** Stripe test-mode card payments through Stripe's own form. Card
-  details never reach this server. Payment results arrive by webhook and are
-  processed through RabbitMQ.
+  details never reach this server. Estonian bank links through Montonio are an
+  optional second method (off unless configured): the customer pays in their own
+  internet bank. Payment results arrive by webhook and are processed through
+  RabbitMQ.
 - **Orders:** every change is recorded as an event and the status is derived from
   those events, so an order's history cannot be rewritten. Cancel an unpaid
-  order, or refund a paid one.
+  order, or refund a paid one. A card refund is immediate; a bank-link refund
+  shows `REFUND_REQUESTED` until Montonio settles it.
 - **Invoices:** a PDF is generated when a payment succeeds and attached to the
   confirmation email. Staff can issue a new invoice, but earlier ones are kept.
 - **Reviews:** only verified buyers can review, and reviews can be sorted by
@@ -207,6 +210,8 @@ erDiagram
     ORDERS ||--o{ ORDER_LINES : "snapshots"
     ORDERS ||--o{ ORDER_EVENTS : "derives status from"
     ORDERS ||--o{ PAYMENTS : "links to Stripe PaymentIntent"
+    ORDERS ||--o| BANK_LINK_PAYMENTS : "links to Montonio order"
+    ORDERS ||--o{ BANK_LINK_REFUNDS : "refund attempts"
     ORDERS ||--o{ BILLING_DOCUMENTS : "invoiced by"
     RESERVATIONS ||--o| ORDER_LINES : "backs"
     REVIEWS ||--o{ REVIEW_VOTES : "marked helpful by"
@@ -404,6 +409,33 @@ erDiagram
     PROCESSED_STRIPE_EVENTS {
         text event_id PK
         timestamptz processed_at
+    }
+    BANK_LINK_PAYMENTS {
+        uuid id PK
+        uuid order_id FK "UNIQUE"
+        text montonio_order_uuid "UNIQUE"
+        text payment_url
+        text bank_code
+        numeric amount
+        varchar currency
+        timestamptz created_at
+    }
+    PROCESSED_BANK_LINK_RESULTS {
+        text montonio_order_uuid PK
+        text payment_status PK "with the uuid, the idempotency claim"
+        timestamptz processed_at
+    }
+    BANK_LINK_REFUNDS {
+        uuid id PK
+        uuid order_id FK "one open attempt per order"
+        text montonio_order_uuid
+        text idempotency_key "UNIQUE"
+        numeric amount
+        varchar currency
+        text montonio_refund_uuid
+        text outcome "SUCCESSFUL / REJECTED / CANCELED"
+        timestamptz created_at
+        timestamptz resolved_at
     }
     BILLING_DOCUMENTS {
         uuid id PK

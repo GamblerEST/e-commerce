@@ -3,6 +3,7 @@
 Detail that is too long for the README. Start with the [README](../README.md).
 
 - [Local demo](#local-demo), including [Stripe test cards](#stripe-test-cards)
+  and [Bank-link test payments](#bank-link-test-payments)
 - [Feature walkthrough](#feature-walkthrough)
 - [Full setup notes](#setup)
 - [Running the tests](#running-the-tests)
@@ -105,6 +106,25 @@ the success/decline pair.
   order for its full line-item + event-history detail. Cancel an unpaid
   order (releases its inventory reservation) or a paid one (issues a real
   Stripe refund) from the detail page.
+
+### Bank-link test payments
+
+Bank links are off unless switched on, so a fresh clone needs no Montonio
+account. To try them against Montonio's sandbox:
+
+1. From the Montonio Partner System, take the **sandbox** access key and
+   secret key.
+2. In `.env`, set `MONTONIO_ENABLED=true`,
+   `MONTONIO_API_URL=https://sandbox-stargate.montonio.com/api`, and
+   `MONTONIO_ACCESS_KEY` to the sandbox access key.
+3. Put the sandbox secret key in `deploy/secrets/montonio_secret_key`
+   (`./deploy/init-secrets.sh` creates the file empty), then run
+   `docker compose up -d --force-recreate backend`. A changed secret is only
+   picked up when the container is recreated.
+
+Checkout then offers **Bank link** next to card payment. Choosing a bank sends
+you to Montonio's sandbox bank page; paying or cancelling there brings you back
+to `/checkout/bank-link/return`, which shows the result and settles the order.
 
 ## Feature walkthrough
 
@@ -593,6 +613,16 @@ The diagram omits these notes to keep it narrow:
 - `product_images.thumbnail_key`: nullable — ~400px rendition
 - `product_images.medium_key`: nullable — ~1000px rendition
 - `orders.idempotency_key`: UNIQUE
+- `processed_bank_link_results` does the same for Montonio, whose result arrives
+  twice by design: its notification, retried for up to two days, and the
+  customer's return from the bank. The key is the Montonio order and the
+  status, so the one result a bank can change later (voiding a payment it
+  already confirmed) is still seen, once.
+- `bank_link_refunds.outcome` is written once, when Montonio settles an
+  attempt, by an `UPDATE ... WHERE outcome IS NULL` whose row count decides who
+  records it. A partial unique index allows one open attempt per order, so
+  concurrent refund requests share one idempotency key instead of sending two
+  refunds. The order's own history is still only appended to `order_events`.
 - `orders.billing_name`: encrypted
 - `orders.billing_email`: encrypted
 - `orders.billing_phone`: encrypted, nullable

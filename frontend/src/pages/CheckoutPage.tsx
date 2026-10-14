@@ -10,6 +10,7 @@ import type {
   CheckoutRequest,
   DeliveryOptionResponse,
   OrderResponse,
+  PaymentMethodsResponse,
 } from '../api/types';
 import { formatDeliveryEstimate, formatMoney } from '../lib/format';
 import PageMeta from '../components/PageMeta';
@@ -146,6 +147,12 @@ export default function CheckoutPage() {
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOptionResponse[]>([]);
   const [deliveryCode, setDeliveryCode] = useState('');
 
+  // What checkout can offer, from the server. Card stays the default; a bank link
+  // only appears when the shop has it switched on and Montonio lists banks.
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodsResponse | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'BANK_LINK'>('CARD');
+  const [bankCode, setBankCode] = useState('');
+
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -157,6 +164,23 @@ export default function CheckoutPage() {
   // SAME key, or the server has no way to tell it apart from a second,
   // genuine order.
   const idempotencyKeyRef = useRef(crypto.randomUUID());
+
+  // Payment choices load for everyone, guests included, like the delivery
+  // options below.
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<PaymentMethodsResponse>('/payments/methods')
+      .then((methods) => {
+        if (cancelled) return;
+        setPaymentMethods(methods);
+        if (!methods.card && methods.bankLink) setPaymentMethod('BANK_LINK');
+      })
+      // Unknown means card only, which is what checkout offered before bank links.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Convenience only — a returning customer shouldn't have to retype an
   // address we already have on their last order. Never overwrites anything
@@ -225,12 +249,26 @@ export default function CheckoutPage() {
         country,
         deliveryCode: deliveryCode || null,
         adsOid,
+        paymentMethod: paymentMethods?.bankLink ? paymentMethod : 'CARD',
+        bankCode: paymentMethods?.bankLink && paymentMethod === 'BANK_LINK' ? bankCode || null : null,
       };
       const result = await apiFetch<OrderResponse>('/checkout', {
         method: 'POST',
         body: req,
         headers: { 'Idempotency-Key': idempotencyKeyRef.current },
       });
+      if (result.paymentRedirectUrl) {
+        // Off to the customer's bank. Only ever an https URL from our own server; the
+        // order settles when Montonio reports the result, and the customer comes back
+        // to /checkout/bank-link/return.
+        if (result.paymentRedirectUrl.startsWith('https://')) {
+          window.location.assign(result.paymentRedirectUrl);
+          return;
+        }
+        setError('The bank payment could not be started. Please try again.');
+        return;
+      }
+
       setOrder(result);
       await refreshCart(); // now empty — updates the navbar badge
       // No PaymentIntent means Stripe isn't configured in this environment
@@ -534,13 +572,80 @@ export default function CheckoutPage() {
               )}
             </fieldset>
           )}
+          {paymentMethods?.bankLink && (
+            <fieldset className="mt-4 rounded-card border border-hairline p-4">
+              <legend className="px-1 text-sm font-bold text-ink">Payment method</legend>
+              {paymentMethods.card && (
+                <label className="flex cursor-pointer items-center gap-3 rounded-field p-2 hover:bg-canvas">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="CARD"
+                    checked={paymentMethod === 'CARD'}
+                    onChange={() => setPaymentMethod('CARD')}
+                    className="shrink-0"
+                  />
+                  <span className="flex flex-1 flex-col">
+                    <span className="font-semibold text-ink">Card</span>
+                    <span className="text-sm text-muted">Paid securely through Stripe, without leaving this page</span>
+                  </span>
+                </label>
+              )}
+              <label className="flex cursor-pointer items-center gap-3 rounded-field p-2 hover:bg-canvas">
+                <input
+                  type="radio"
+                  name="paymentMethod"
+                  value="BANK_LINK"
+                  checked={paymentMethod === 'BANK_LINK'}
+                  onChange={() => setPaymentMethod('BANK_LINK')}
+                  className="shrink-0"
+                />
+                <span className="flex flex-1 flex-col">
+                  <span className="font-semibold text-ink">Bank link</span>
+                  <span className="text-sm text-muted">Pay in your own internet bank, then come back here</span>
+                </span>
+              </label>
+              {fieldErrors.paymentMethod && (
+                <span className="mt-1 block text-sm text-danger">{fieldErrors.paymentMethod}</span>
+              )}
+              {paymentMethod === 'BANK_LINK' && (
+                <fieldset className="mt-3 rounded-card border border-hairline p-4">
+                  <legend className="px-1 text-sm font-bold text-ink">Your bank</legend>
+                  {paymentMethods.banks.map((bank) => (
+                    <label
+                      key={bank.code}
+                      className="flex cursor-pointer items-center gap-3 rounded-field p-2 hover:bg-canvas"
+                    >
+                      <input
+                        type="radio"
+                        name="bankCode"
+                        value={bank.code}
+                        checked={bankCode === bank.code}
+                        onChange={() => setBankCode(bank.code)}
+                        required
+                        className="shrink-0"
+                      />
+                      <span className="font-semibold text-ink">{bank.name}</span>
+                    </label>
+                  ))}
+                  {fieldErrors.bankCode && (
+                    <span className="mt-1 block text-sm text-danger">{fieldErrors.bankCode}</span>
+                  )}
+                </fieldset>
+              )}
+            </fieldset>
+          )}
           {error && (
             <p role="alert" className="mt-4 rounded-field bg-danger-bg px-4 py-3 text-danger">
               {error}
             </p>
           )}
           <Button type="submit" disabled={submitting} className="mt-6 w-full">
-            {submitting ? 'Placing order…' : `Place order — ${formatMoney(orderTotal, cart.currency)}`}
+            {submitting
+              ? 'Placing order…'
+              : paymentMethods?.bankLink && paymentMethod === 'BANK_LINK'
+                ? `Continue to your bank — ${formatMoney(orderTotal, cart.currency)}`
+                : `Place order — ${formatMoney(orderTotal, cart.currency)}`}
           </Button>
         </form>
 

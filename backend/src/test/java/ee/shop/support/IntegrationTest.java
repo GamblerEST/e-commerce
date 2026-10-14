@@ -53,6 +53,13 @@ public abstract class IntegrationTest {
     protected static final GazetteerStub GAZETTEER = GazetteerStub.start();
 
     /**
+     * Montonio, stood in for locally and switched on for every integration test:
+     * bank links are part of the same application context the whole suite starts,
+     * and nothing ever reaches Montonio's real API.
+     */
+    protected static final MontonioStub MONTONIO = MontonioStub.start();
+
+    /**
      * Test-only password for shop_runtime; the real one is a Docker secret
      * (deploy/secrets/db_runtime_password). Set on the role by
      * R__runtime_role.sql via the Flyway placeholder wired below, so tests that
@@ -80,6 +87,12 @@ public abstract class IntegrationTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("app.address-lookup.gazetteer-url", GAZETTEER::url);
+        registry.add("app.montonio.enabled", () -> "true");
+        registry.add("app.montonio.api-url", MONTONIO::url);
+        registry.add("app.montonio.access-key", () -> MontonioStub.ACCESS_KEY);
+        registry.add("app.montonio.secret-key", () -> MontonioStub.SECRET_KEY);
+        // Refund tests run the reconciler themselves; a scheduled run must not race them.
+        registry.add("app.montonio.refund-check-interval", () -> "PT1H");
         // A fixture shaped like a real frontend build, so page tests do not depend
         // on the frontend having been built first.
         registry.add("app.seo.index-html", () -> testResource("/seo/index.html"));

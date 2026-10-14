@@ -286,6 +286,25 @@ app:
       capacity: 60
       period: PT1M
 
+    # A customer coming back from their bank sends one result. The limit is against
+    # replaying captured results or probing with made-up ones, not against customers.
+    bank-link-return:
+      capacity: 20
+      period: PT1M
+
+  # Estonian bank-link payments through Montonio. Off unless enabled; when on, the
+  # URL and both keys are required and the app refuses to start without them (see
+  # MontonioProperties). api-url has no default on purpose, so production can never
+  # fall back to the sandbox, nor the sandbox to production.
+  montonio:
+    enabled: ${MONTONIO_ENABLED:false}
+    api-url: ${MONTONIO_API_URL:}
+    access-key: ${MONTONIO_ACCESS_KEY:}
+    secret-key: ${montonio_secret_key:${MONTONIO_SECRET_KEY:}}
+    # How often unfinished bank-link refunds are checked with Montonio. They settle
+    # over days, and each refund notification from Montonio also triggers a check.
+    refund-check-interval: PT10M
+
   # Reservation hold during checkout (DECISIONS.md §3) — see InventoryProperties.
   inventory:
     reservation-ttl: PT15M

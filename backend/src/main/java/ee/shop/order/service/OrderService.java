@@ -26,7 +26,6 @@ import ee.shop.order.web.dto.OrderLineResponse;
 import ee.shop.order.web.dto.OrderListResponse;
 import ee.shop.order.web.dto.OrderResponse;
 import ee.shop.order.web.dto.OrderSummaryResponse;
-import ee.shop.payment.service.PaymentService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -65,7 +64,7 @@ public class OrderService {
     private final InventoryService inventory;
     private final TaxProperties tax;
     private final MailService mail;
-    private final PaymentService payments;
+    private final OrderRefunds refunds;
     private final DeliveryOptionRepository deliveryOptions;
     private final AuditService audit;
     private final InvoiceService invoices;
@@ -73,7 +72,7 @@ public class OrderService {
     public OrderService(OrderRepository orders, OrderLineRepository orderLines,
                          OrderEventRepository orderEvents, ProductRepository products,
                          InventoryService inventory, TaxProperties tax, MailService mail,
-                         PaymentService payments, DeliveryOptionRepository deliveryOptions,
+                         OrderRefunds refunds, DeliveryOptionRepository deliveryOptions,
                          AuditService audit, InvoiceService invoices) {
         this.orders = orders;
         this.orderLines = orderLines;
@@ -82,7 +81,7 @@ public class OrderService {
         this.inventory = inventory;
         this.tax = tax;
         this.mail = mail;
-        this.payments = payments;
+        this.refunds = refunds;
         this.deliveryOptions = deliveryOptions;
         this.audit = audit;
         this.invoices = invoices;
@@ -286,21 +285,26 @@ public class OrderService {
     /**
      * Cancel-before-shipping: an unpaid (CREATED)
      * order just releases its reservations, but a PAID order needs an actual
-     * Stripe refund first — anything past that (PAYMENT_FAILED already
-     * released its own stock, CANCELLED/REFUNDED already resolved, SHIPPED
-     * needs a real-world return, not a button) is refused.
+     * refund first — anything past that (PAYMENT_FAILED already released its
+     * own stock, CANCELLED/REFUNDED already resolved, a refund already
+     * requested, SHIPPED needs a real-world return, not a button) is refused.
+     *
+     * The refund goes through whichever provider took the payment
+     * (OrderRefunds). A card refund is REFUNDED at once; a bank-link refund is
+     * REFUND_REQUESTED until Montonio settles it (BankLinkRefundReconciler).
      *
      * Deliberately NOT @Transactional at this outer level: the PAID branch
-     * makes a real network call to Stripe (payments.refundForOrder), and
-     * PaymentService's own contract is that Stripe calls must never run
-     * inside an open DB transaction (see its javadoc — same reasoning as
-     * CheckoutController). Each DB step below is independently atomic
+     * makes a real network call to the payment provider, and PaymentService's
+     * own contract is that such calls must never run inside an open DB
+     * transaction (see its javadoc — same reasoning as CheckoutController).
+     * Each DB step below is independently atomic
      * (InventoryService.release()'s claim, JpaRepository.save()'s own
      * per-call transaction) and idempotent, so a failure partway through —
-     * e.g. the refund succeeds but this process dies before the REFUNDED
-     * event is appended — leaves the order in a recoverable state: a retried
-     * cancel just re-derives PAID, calls refundForOrder again, and Stripe
-     * itself is idempotent on a PaymentIntent that's already refunded.
+     * e.g. the refund succeeds but this process dies before its event is
+     * appended — leaves the order in a recoverable state: a retried cancel
+     * just re-derives PAID and asks again. Stripe is idempotent on a
+     * PaymentIntent that's already refunded, and a bank-link retry reuses the
+     * open refund attempt's idempotency key.
      */
     public OrderResponse cancelOrder(UUID userId, UUID orderId) {
         Order order = orders.findById(orderId)
@@ -312,8 +316,10 @@ public class OrderService {
             releaseReservations(orderId);
             orderEvents.save(new OrderEvent(orderId, OrderEvent.Type.CANCELLED));
         } else if (OrderEvent.Type.PAID.name().equals(status)) {
-            payments.refundForOrder(orderId);
-            orderEvents.save(new OrderEvent(orderId, OrderEvent.Type.REFUNDED));
+            OrderRefunds.Outcome outcome = refunds.refund(orderId);
+            orderEvents.save(new OrderEvent(orderId, outcome == OrderRefunds.Outcome.REFUNDED
+                    ? OrderEvent.Type.REFUNDED
+                    : OrderEvent.Type.REFUND_REQUESTED));
         } else {
             throw AppException.conflict("This order can no longer be cancelled");
         }
@@ -330,8 +336,8 @@ public class OrderService {
     }
 
     /**
-     * Called by PaymentResultConsumer once Stripe confirms the PaymentIntent
-     * succeeded. Idempotent by construction: only acts
+     * Called by PaymentResultConsumer once the payment provider confirms the
+     * payment succeeded. Idempotent by construction: only acts
      * while the order is still CREATED, so RabbitMQ redelivering the same
      * message — which its at-least-once delivery guarantee makes a normal
      * occurrence, not a bug — just no-ops on the replay instead of
@@ -345,9 +351,9 @@ public class OrderService {
             if (OrderEvent.Type.CANCELLED.name().equals(status)
                     || OrderEvent.Type.PAYMENT_FAILED.name().equals(status)) {
                 // Money arrived for an order no longer waiting for it: cancelled while the
-                // customer was still paying, or already reported failed. Nothing here can
-                // reopen the order, so the payment has to be returned by hand, and this is
-                // how staff find out.
+                // customer was still paying or at their bank, or already reported failed.
+                // Nothing here can reopen the order, so the payment has to be returned by
+                // hand, and this is how staff find out.
                 audit.record("payment.received_for_closed_order", null, "order " + orderId, null, null);
             }
             return;
@@ -441,7 +447,7 @@ public class OrderService {
                 order.getSubtotal(), order.getVatTotal(), order.getTotal(), deliveryDetails(order),
                 order.getBillingName(), order.getBillingEmail(), order.getBillingPhone(), order.getBillingAddressLine1(),
                 order.getBillingAddressLine2(), order.getBillingCity(), order.getBillingPostalCode(),
-                order.getBillingCountry(), order.getCreatedAt(), null);
+                order.getBillingCountry(), order.getCreatedAt(), null, null);
     }
 
     /**

@@ -162,6 +162,20 @@
 
 	log {
 		output file /var/log/caddy/access.log
-		format json
+		# A customer returning from their bank arrives with ?order-token=..., a signed
+		# payment result that can carry the payer's name and account number. It is
+		# redacted before the line is written: from the request URI, and from the
+		# Referer that the page's own asset and API requests send back to this host.
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					replace order-token REDACTED
+				}
+				request>headers>Referer query {
+					replace order-token REDACTED
+				}
+			}
+		}
 	}
 }

@@ -11,7 +11,8 @@ import java.util.UUID;
  * response CheckoutController returns right after creating a fresh
  * PaymentIntent — list/detail views (OrderService.toResponse) leave it
  * null; re-exposing a stale client secret for an already-resolved payment
- * makes no sense there.
+ * makes no sense there. paymentRedirectUrl is the bank-link counterpart, the
+ * customer's payment page at their bank, and is populated the same way.
  */
 public record OrderResponse(
         UUID id,
@@ -43,7 +44,8 @@ public record OrderResponse(
         String billingPostalCode,
         String billingCountry,
         Instant createdAt,
-        String paymentClientSecret
+        String paymentClientSecret,
+        String paymentRedirectUrl
 ) {
     /** "ORD-3F2A9C1B" — short enough to read down a phone, derived from the id. */
     public static String referenceFor(UUID id) {
@@ -53,6 +55,12 @@ public record OrderResponse(
     public OrderResponse withPaymentClientSecret(String clientSecret) {
         return new OrderResponse(id, reference, status, lines, events, currency, subtotal, vatTotal, total,
                 delivery, billingName, billingEmail, billingPhone, billingAddressLine1, billingAddressLine2,
-                billingCity, billingPostalCode, billingCountry, createdAt, clientSecret);
+                billingCity, billingPostalCode, billingCountry, createdAt, clientSecret, paymentRedirectUrl);
+    }
+
+    public OrderResponse withPaymentRedirectUrl(String redirectUrl) {
+        return new OrderResponse(id, reference, status, lines, events, currency, subtotal, vatTotal, total,
+                delivery, billingName, billingEmail, billingPhone, billingAddressLine1, billingAddressLine2,
+                billingCity, billingPostalCode, billingCountry, createdAt, paymentClientSecret, redirectUrl);
     }
 }

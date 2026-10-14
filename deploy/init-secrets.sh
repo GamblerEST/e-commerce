@@ -73,6 +73,7 @@ placeholder google_client_secret
 placeholder recaptcha_secret
 placeholder stripe_secret_key
 placeholder stripe_webhook_secret
+placeholder montonio_secret_key
 
 echo
 echo "Done. Now:"
