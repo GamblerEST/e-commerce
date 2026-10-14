@@ -1,0 +1,283 @@
+@import 'tailwindcss';
+
+/* Montserrat is the brand typeface. It is SELF-HOSTED rather than pulled from
+ * fonts.googleapis.com for two independent reasons,
+ * either of which alone would force it:
+ *
+ *   1. deploy/Caddyfile's CSP is `style-src 'self'` with no font-src override,
+ *      so a Google Fonts <link> is blocked outright in the real deployment —
+ *      it would silently fall back to system-ui in prod while looking correct
+ *      in dev, which is the worst possible failure mode.
+ *   2. Serving fonts from Google's CDN discloses every EU visitor's IP address
+ *      to a US processor with no legal basis. German courts have already ruled
+ *      this an actual GDPR violation (LG München I, 3 O 17493/20), and this
+ *      shop is an Estonian company serving EU customers.
+ *
+ * Variable-weight subsets, latin + latin-ext. latin-ext is NOT optional here:
+ * Estonian š (U+0161) and ž (U+017E) live in it, so dropping it would mangle
+ * real product and customer names. 108 KB for both.
+ *
+ * font-display: swap — text stays readable during the font load rather than
+ * rendering invisibly (a real WCAG/perception issue, not just a metric).
+ */
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/montserrat-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/montserrat-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Design tokens — the single source of truth for this shop's visual language.
+ *
+ * Everything visual resolves to a token defined here: colour, radius, type
+ * scale. Nothing downstream should hardcode a hex value or a rem size, so a
+ * brand change is one edit in this file rather than a search across pages.
+ *
+ * Two systems share this one palette on purpose. The older pages
+ * style themselves with plain CSS custom properties in App.css, and everything
+ * newer is written in Tailwind. Pointing Tailwind's
+ * @theme at the same variables means re-skinning happens in ONE place and the
+ * old and new pages cannot drift apart visually — one visual language,
+ * not two. It also means App.css can be
+ * retired file-by-file later without a flag day.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Primary text and the brand's dark surface colour. */
+  --text: #232830;
+  /* Muted grey for secondary copy. Chosen to clear WCAG 1.4.3's 4.5:1 against
+   * --bg; the lighter grey this replaced managed only ~1.9:1, which is fine
+   * for a decorative rule but a contrast failure for body text. */
+  --text-muted: #565c64;
+  /* Page ground — very slightly off-white, so white cards read as raised. */
+  --bg: #f9f9f9;
+  /* Card and panel fill. */
+  --surface: #fff;
+  /* Hairline borders. A flat colour rather than a translucent black, so it
+   * composites identically over cards and over the page ground. */
+  --border: #d3d5d8;
+
+  /* The signature lime. It is a BACKGROUND colour ONLY: at ~0.87 relative
+   * luminance it cannot carry text on white (1.1:1), so every rule that fills
+   * with --accent must set --on-accent as its foreground. */
+  --accent: #dcf900;
+  --accent-hover: #c7e100;
+  --on-accent: #232830;
+
+  /* Links are charcoal + underline rather than lime, for the contrast reason
+   * above. The lime returns on hover as an underline highlight. */
+  --link: #232830;
+
+  --error: #b3261e;
+  --error-bg: #fdecea;
+  --success: #1b5e20;
+  --success-bg: #e8f5e9;
+
+  /* Card and field rounding. */
+  --radius: 1.25rem;
+  --radius-input: 0.5rem;
+  /* The asymmetric button corner — rounded on one diagonal, square on the
+   * other. It is the most recognisable element of the brand, so it is applied
+   * to primary calls to action only; a whole row of them turns into a zigzag. */
+  --radius-btn: 0 1.25rem 0 1.25rem;
+
+  font: 16px/1.5 Montserrat, system-ui, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* The lime is unchanged in dark mode — it is the brand, and it happens to
+ * carry charcoal text at ~15:1 on either ground. Only the neutrals invert. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #f1f2f3;
+    --text-muted: #a9aeb5;
+    --bg: #17191d;
+    --surface: #21242a;
+    --border: #343841;
+    --link: #f1f2f3;
+    --error: #ff8a80;
+    --error-bg: #3a1f1c;
+    --success: #a5d6a7;
+    --success-bg: #1b2e1d;
+    color-scheme: dark;
+  }
+}
+
+/* Tailwind reads the same variables, so `bg-surface` and `background:
+ * var(--surface)` are guaranteed to be the same colour. */
+@theme inline {
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+  --color-canvas: var(--bg);
+  --color-surface: var(--surface);
+  --color-hairline: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--error);
+  --color-danger-bg: var(--error-bg);
+  --color-ok: var(--success);
+  --color-ok-bg: var(--success-bg);
+
+  --font-sans: Montserrat, system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  /* The type scale, exposed as text-display/text-h1.. so headings are picked
+   * from a fixed ramp instead of ad-hoc rem values invented per page. */
+  --text-display: 3rem;
+  --text-display--line-height: 1;
+  --text-h1: 2.5625rem;
+  --text-h1--line-height: 3.25rem;
+  --text-h2: 2.25rem;
+  --text-h2--line-height: 2.75rem;
+  --text-h3: 1.9375rem;
+  --text-h3--line-height: 2.25rem;
+  --text-h4: 1.3125rem;
+  --text-h4--line-height: 1.875rem;
+  --text-h6: 1.125rem;
+  --text-h6--line-height: 1.5rem;
+
+  --radius-card: 1.25rem;
+  --radius-field: 0.5rem;
+}
+
+/* Tailwind's preflight resets every heading to `font-size: inherit;
+ * font-weight: inherit`. That is the right default for a codebase written
+ * entirely in utility classes — but the older pages style
+ * themselves with plain CSS and relied on the browser defaults, so adopting
+ * Tailwind silently flattened every <h1>/<h2> on those pages to body text.
+ *
+ * These base rules put the scale back, using the same type ramp as the tokens
+ * above. Utility classes still win on the newer pages,
+ * because @layer base has lower precedence than Tailwind's utilities — so
+ * `text-h3` on a heading overrides this without !important.
+ */
+@layer base {
+  h1 {
+    font-size: 2.5625rem;
+    line-height: 3.25rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-size: 2.25rem;
+    line-height: 2.75rem;
+    font-weight: 800;
+  }
+  h3 {
+    font-size: 1.9375rem;
+    line-height: 2.25rem;
+    font-weight: 700;
+  }
+  h4 {
+    font-size: 1.3125rem;
+    line-height: 1.875rem;
+    font-weight: 700;
+  }
+  h5 {
+    font-size: 1.2rem;
+    line-height: 1.6rem;
+    font-weight: 700;
+  }
+  h6 {
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+    font-weight: 700;
+  }
+
+  /* Headings that sit inside a dense card in the old CSS were sized down by
+   * their own rules; those rules still apply and still win on specificity. */
+  strong,
+  b {
+    font-weight: 700;
+  }
+}
+
+/* These element defaults MUST live inside @layer base.
+ *
+ * Tailwind v4 emits its utilities inside `@layer utilities`, and in the CSS
+ * cascade ANY unlayered rule beats every layered one regardless of
+ * specificity. An unlayered `a { color: var(--link) }` therefore silently
+ * overrode `text-surface`, `text-on-accent` and every other colour utility
+ * applied to a link — which rendered, for example, the active admin nav pill
+ * as charcoal text on a charcoal background: invisible, with no error and
+ * nothing wrong-looking in the markup.
+ *
+ * Inside @layer base they behave as intended: a sensible default that any
+ * utility class can override. */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  a {
+    color: var(--link);
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+  }
+}
+
+/* WCAG 2.1 A — 2.4.7/2.1.1. Every interactive element must show where focus
+ * is. :focus-visible (not :focus) so a mouse click does not leave a ring
+ * behind, while keyboard traversal always does. The dark outline is used
+ * rather than the lime because the lime disappears against a lime button. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Respect a reader's own motion preference (WCAG 2.3.3 / 2.2.2). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Skip link — first tabbable element on every page, visible only once
+ * focused. WCAG 2.4.1 (Bypass Blocks). */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.75rem 1.25rem;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  text-decoration: none;
+  border-radius: 0 0 var(--radius-input) 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}

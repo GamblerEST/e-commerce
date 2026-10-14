@@ -1,0 +1,22 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch();
+const c = await b.newContext({ viewport: { width: 1280, height: 1000 } });
+const p = await c.newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+await p.goto('http://localhost:5173/products', { waitUntil: 'load' });
+await p.waitForTimeout(2200);
+console.log('h1:', (await p.locator('h1').allTextContents()).join(' | '));
+console.log('result count:', (await p.locator('.result-count').textContent()).trim());
+console.log('grid items:', await p.locator('.product-grid-new > li').count());
+console.log('grid pressed:', await p.locator('.view-toggle button[aria-pressed=true]').textContent());
+await p.locator('.view-toggle button:has-text("List")').click();
+await p.waitForTimeout(700);
+console.log('after toggle -> list items:', await p.locator('.product-list-new > li').count());
+console.log('list pressed:', await p.locator('.view-toggle button[aria-pressed=true]').textContent());
+await p.screenshot({ path: process.argv[2], fullPage: false });
+// persistence across reload
+await p.reload({ waitUntil: 'load' });
+await p.waitForTimeout(1800);
+console.log('after reload, still list:', await p.locator('.product-list-new').count() === 1);
+console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no page errors');
+await b.close();

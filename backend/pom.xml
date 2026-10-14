@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.1.0</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>ee.shop</groupId>
+  <artifactId>shop-backend</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+
+  <properties>
+    <java.version>21</java.version>
+    <jjwt.version>0.12.6</jjwt.version>
+    <twelvemonkeys.version>3.12.0</twelvemonkeys.version>
+    <stripe.version>29.2.0</stripe.version>
+    <!-- Spring Boot 4.1 manages Testcontainers 2.0 itself since the Boot 4.1 upgrade
+         — the 1.21.4 pin that used to be needed here
+         to work around Boot 3.4.1's older managed version (whose docker-java
+         client negotiated an API version this Docker Engine rejected) is
+         gone; letting the parent BOM manage it again unless that specific
+         bug resurfaces. -->
+  </properties>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-oauth2-client</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
+
+    <!-- RabbitMQ: payment result -> queue -> order consumer — how
+         payment results reach orders, not optional infrastructure. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp</artifactId>
+    </dependency>
+
+    <!-- Stripe SDK — not managed by Spring's BOM, pinned explicitly. Card
+         data never touches this dependency at all: it only creates/reads
+         PaymentIntents and verifies webhook signatures, both server-to-
+         server; the actual card entry happens in Stripe.js/Elements on the
+         frontend, which this backend never sees (PCI scope stays off us). -->
+    <dependency>
+      <groupId>com.stripe</groupId>
+      <artifactId>stripe-java</artifactId>
+      <version>${stripe.version}</version>
+    </dependency>
+
+    <!-- Spring Boot 4's modularization split RestClient autoconfiguration out
+         of the monolithic autoconfigure jar — RecaptchaService and
+         GoogleOAuthClient both inject RestClient.Builder, which nothing else
+         on the classpath provides anymore without this starter. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-restclient</artifactId>
+    </dependency>
+
+    <!-- Actuator: /health for the Docker healthcheck and the load balancer,
+         /metrics for Prometheus later. Endpoints are locked down in SecurityConfig. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!-- REQUIRED for Argon2PasswordEncoder. Spring Security ships the wrapper
+         class but delegates the actual Argon2 implementation to BouncyCastle.
+         Omit this and you get a NoClassDefFoundError at first login, not at
+         compile time — a nasty way to find out. -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>1.79</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Generates the OpenAPI 3 spec from the existing @RestController/DTO
+         code (no hand-written spec to keep in sync) and serves both the raw
+         JSON (/v3/api-docs) and an interactive Swagger UI (/swagger-ui.html)
+         from the same dependency. -->
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+      <version>3.0.0</version>
+    </dependency>
+    <!-- Spring Boot 4's modularization split Flyway autoconfiguration out of
+         the monolithic autoconfigure jar into its own module — plain
+         flyway-core/flyway-database-postgresql on the classpath is no longer
+         enough to trigger FlywayAutoConfiguration; this starter is what
+         actually pulls spring-boot-flyway in. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-flyway</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-api</artifactId>
+      <version>${jjwt.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-impl</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-jackson</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Registers a WebP ImageReader with the JVM's ImageIO SPI — the JDK's
+         built-in ImageIO has no WebP support at all, and ProductImageController
+         verifies uploads by actually decoding them (not trusting the
+         client-supplied Content-Type header), so without this, every
+         "image/webp" upload — a type the endpoint otherwise accepts — would
+         fail that check even for a genuinely valid WebP file. -->
+    <dependency>
+      <groupId>com.twelvemonkeys.imageio</groupId>
+      <artifactId>imageio-webp</artifactId>
+      <version>${twelvemonkeys.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Apache Commons CSV: bulk product upload accepts
+         CSV, and CSV is deceptively hard — quoted fields containing commas,
+         doubled quotes, and newlines inside a quoted description are all
+         legal and all silently corrupt a hand-rolled split(","). A mangled
+         import writes wrong prices and descriptions into the catalogue
+         without erroring, so this is worth a small, mature dependency. -->
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-csv</artifactId>
+      <version>1.12.0</version>
+    </dependency>
+
+    <!-- OpenPDF: invoice PDF generation (InvoiceService). LGPL/MPL dual
+         license, a maintained fork of iText 4 (hence the com.lowagie.text
+         package name) — its Document/PdfPTable object model fits a project
+         with no HTML/CSS templating engine anywhere better than standing
+         one up just for this one document. -->
+    <dependency>
+      <groupId>com.github.librepdf</groupId>
+      <artifactId>openpdf</artifactId>
+      <version>2.0.3</version>
+    </dependency>
+
+    <!-- Bucket4j: token-bucket rate limiting, backed by Redis so the limit is
+         shared across every app instance. An in-JVM limiter is useless the
+         moment you run two containers. -->
+    <dependency>
+      <groupId>com.bucket4j</groupId>
+      <artifactId>bucket4j_jdk17-redis-common</artifactId>
+      <version>8.14.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.bucket4j</groupId>
+      <artifactId>bucket4j_jdk17-lettuce</artifactId>
+      <version>8.14.0</version>
+    </dependency>
+
+    <!-- TOTP (RFC 6238) for 2FA -->
+    <dependency>
+      <groupId>dev.samstevens.totp</groupId>
+      <artifactId>totp</artifactId>
+      <version>1.7.1</version>
+    </dependency>
+
+    <!-- ── Test ────────────────────────────────────────────────────────────
+         NOTE: no H2. We use Postgres-specific features (citext, INET, JSONB,
+         partial indexes, plpgsql triggers). H2's "PostgreSQL mode" fakes some
+         of them and silently mishandles the rest, so tests would pass against
+         a database that is not the one we deploy. Testcontainers runs the real
+         thing in Docker for the duration of the test run. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Spring Boot 4's modularization split MockMvc test support out of
+         spring-boot-starter-test entirely — @AutoConfigureMockMvc now lives
+         in org.springframework.boot.webmvc.test.autoconfigure, shipped by
+         this starter, not the general one above. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webmvc-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Testcontainers 2.0 (managed by Spring Boot 4.1) renamed these
+         modules with a testcontainers- prefix: postgresql -> testcontainers-postgresql,
+         junit-jupiter -> testcontainers-junit-jupiter. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- RabbitConfig's beans need a real ConnectionFactory at context startup,
+         so this is not optional the moment spring-boot-starter-amqp is on the
+         classpath — same reasoning as Postgres/Redis above, applied to the
+         payment-result queue. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-rabbitmq</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

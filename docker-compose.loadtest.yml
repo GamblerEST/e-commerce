@@ -1,0 +1,52 @@
+# Load-testing overlay. NEVER use this to serve real traffic.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml \
+#                  -f docker-compose.loadtest.yml up -d --force-recreate backend
+#   docker compose exec redis sh -c \
+#     'redis-cli -a "$(cat /run/secrets/redis_password)" --no-auth-warning FLUSHALL'
+#
+# THE REDIS FLUSH IS NOT OPTIONAL. Token buckets are persisted in Redis with
+# the capacity they were created with, so raising a limit in configuration does
+# NOT change a bucket that already exists — the old capacity keeps being
+# enforced until the key expires. Skipping the flush produces a run that looks
+# like the application throttling at 120 req/min when it is really a stale
+# bucket, and the config change appears not to work at all. Confirmed the hard
+# way: 200 rapid requests returned 159x 429 with the new limits loaded, and
+# 200x 200 after a FLUSHALL.
+#
+# Why this file exists
+# ────────────────────
+# Rate limiting is per IP (and per account where one exists). A load generator
+# running on one machine presents as ONE client, so at 50 concurrent users it
+# exhausts the per-IP bucket within seconds and every subsequent request gets a
+# 429. The measurement that comes back is then a measurement of the rate
+# limiter, not of the application — the very thing the test is meant to size.
+#
+# Raising the buckets here lets the load test reach the application. Both
+# numbers matter and PERFORMANCE.md reports both: what one IP is allowed
+# (the production limit, deliberately small) and what the application can
+# actually serve (measured with this overlay).
+services:
+  backend:
+    environment:
+      # SPRING_APPLICATION_JSON rather than individual APP_RATELIMIT_* env
+      # vars. Those DO reach the container but Spring does not bind them:
+      # relaxed binding has to reconcile a hyphenated, nested,
+      # constructor-bound record (app.rate-limit.product-search.capacity) with
+      # an underscore-flattened env name, and it silently does not — the app
+      # boots happily on the yaml defaults and the load test then measures the
+      # rate limiter instead of the application. Verified by watching /api/
+      # products keep returning 429 with the env vars visible in `docker exec
+      # env`. JSON is bound as a normal property source, with no name mangling
+      # to get wrong.
+      #
+      # ~100x the production values, purely so the limiter is not the thing
+      # under test. The limiter itself is covered by RateLimitServiceTest.
+      SPRING_APPLICATION_JSON: >-
+        {"app":{"rate-limit":{
+          "product-search":{"capacity":100000,"period":"PT1M"},
+          "cart-mutation":{"capacity":100000,"period":"PT1M"},
+          "checkout":{"capacity":100000,"period":"PT1M"},
+          "register":{"capacity":100000,"period":"PT1M"},
+          "login":{"capacity":100000,"period":"PT1M"}
+        }}}

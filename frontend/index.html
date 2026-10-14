@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Site-wide title and description. Public pages have theirs filled in by
+         the backend before this file reaches the browser (SeoPageController),
+         and PageMeta.tsx keeps them right as the visitor navigates. Keep these
+         two in step with SITE_TITLE and SITE_DESCRIPTION in PageMeta.tsx. -->
+    <title>Estonian Shop — home goods, books and electronics</title>
+    <meta
+      name="description"
+      content="Buy home goods, books, laptops, phones and clothing from Tallinn. VAT included in every price, tracked delivery across Estonia, and secure payments."
+    />
+    <meta name="theme-color" content="#232830" />
+
+    <!-- The two font files every page needs, fetched in parallel with the JS
+         bundle rather than after the CSS parses. crossorigin is REQUIRED on a
+         font preload even same-origin: fonts are fetched in CORS mode, and
+         without it the browser downloads the file twice. -->
+    <link rel="preload" href="/fonts/montserrat-latin.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,57 @@
+# Loaded automatically by `docker compose up` in local dev.
+# On the Hetzner server, deploy with:
+#   docker compose -f docker-compose.yml up -d
+# which ignores this file entirely.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"   # bound to loopback only, not 0.0.0.0
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+  rabbitmq:
+    ports:
+      - "127.0.0.1:15672:15672"   # management UI — http://localhost:15672
+  backend:
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      LOG_LEVEL: DEBUG
+      # Hardcoded, not ${MAIL_HOST} — this INTENTIONALLY overrides whatever
+      # real relay .env/deploy/secrets/mail_password might be pointing at
+      # for a live demo. Local runs (including scripts/smoke.sh
+      # and any automated test) must NEVER be able to reach a real inbox: an
+      # e2e/gate run once registered a fake @test.ee address while the real
+      # Gmail relay was wired in, and Gmail spent 3 days retrying
+      # delivery and notifying the real sender's inbox about it. mailpit
+      # (below) is a local-only SMTP catcher with no such failure mode — view
+      # anything sent at http://localhost:8025. Wanting to demo a REAL email
+      # arriving (the actual reason the Gmail relay exists) is a deliberate,
+      # temporary, manual swap — same dance as recaptca_secret's test-key
+      # swap: change these two vars + deploy/secrets/mail_password, demo,
+      # swap back, never leave it as the ambient default.
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      MAIL_SMTP_AUTH: "false"
+      MAIL_SMTP_STARTTLS: "false"
+    depends_on:
+      mailpit:
+        condition: service_started
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"   # web UI — view caught mail at http://localhost:8025
+  caddy:
+    # Local dev gets its own Caddyfile: Caddy's internal CA mints a
+    # self-signed cert for https://localhost instead of requesting a real
+    # one from Let's Encrypt (which needs a public domain + open port 80/443
+    # reachable from the internet — neither true on a laptop). The actual
+    # port remapping to unprivileged/loopback ports lives in .env
+    # (CADDY_HTTP_PORT/CADDY_HTTPS_PORT) rather than here — see
+    # docker-compose.yml's comment on why a `ports:` override here would
+    # instead get APPENDED to the base file's, not replace it.
+    volumes:
+      - ./deploy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config

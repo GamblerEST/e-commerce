@@ -1,0 +1,320 @@
+spring:
+  application:
+    name: shop-backend
+
+  config:
+    # Docker secrets are mounted as files in /run/secrets/. `configtree` maps
+    # each file to a property named after it, so /run/secrets/db_password
+    # becomes the property `db_password`, with the file's contents as its value.
+    #
+    # `optional:` means the app still starts when the directory is absent (local
+    # dev, tests), falling back to the env vars below.
+    import: optional:configtree:/run/secrets/
+
+  datasource:
+    # No default. If DB_URL is absent the app refuses to start.
+    # A config value that silently falls back to a dev default is how a staging
+    # box ends up writing to a developer's laptop database.
+    url: ${DB_URL}
+    # The RUNTIME role, not the owner. shop_runtime inherits shop_app, which has
+    # DML on the business tables and INSERT+SELECT only on audit_log and
+    # order_events — no UPDATE, no DELETE, no TRUNCATE, and no ownership. That
+    # is what makes the append-only claim in DECISIONS.md §8 true rather than
+    # merely intended: a total SQL injection running as this role still cannot
+    # alter or wipe an audit row.
+    #
+    # Flyway keeps the admin credentials below, because migrations need DDL.
+    username: ${DB_RUNTIME_USER:shop_runtime}
+    password: ${db_runtime_password:${DB_RUNTIME_PASSWORD}}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: 2
+      connection-timeout: 20000
+
+  jpa:
+    hibernate:
+      # validate — Hibernate checks that entities match the schema and stops if
+      # they don't. It never alters the schema; Flyway owns that exclusively.
+      # 'update' is banned: it silently mutates production schemas with no
+      # review, no version history, and no rollback.
+      ddl-auto: validate
+    open-in-view: false   # off. Lazy loading in the view layer causes N+1
+                          # queries and holds a DB connection for the whole
+                          # request. It is on by default and it is a mistake.
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Migrations run as the OWNER: they create tables, triggers and functions,
+    # which the runtime role deliberately cannot do. Splitting the two is the
+    # entire point — the application spends its life with the smaller set of
+    # privileges and only borrows the larger set at startup, under Flyway.
+    user: ${DB_USER}
+    password: ${db_password:${DB_PASSWORD}}
+    placeholders:
+      # Consumed by R__runtime_role.sql. Kept out of the migration file so the
+      # password lives only in the Docker secret.
+      runtime_password: ${db_runtime_password:${DB_RUNTIME_PASSWORD}}
+
+  # Explicit, not relied-on-as-implicit: a request body carrying a field no
+  # DTO declares (e.g. a client trying to sneak "role":"ADMIN" into a
+  # registration payload) is REJECTED with a 400, not silently deserialized
+  # with the extra field discarded. Every DTO in this codebase is already
+  # narrowly scoped ("never bind a request body straight to an
+  # entity"), so this isn't the only thing standing between a stray field
+  # and trouble — but it's a structural, DTO-independent guarantee rather
+  # than one that depends on every DTO staying perfectly scoped forever.
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${redis_password:${REDIS_PASSWORD:}}
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${rabbitmq_password:${RABBITMQ_PASSWORD}}
+
+  servlet:
+    multipart:
+      # Matches ProductImageController's own size check — set here too so an
+      # oversized upload is rejected before it's even fully read into memory,
+      # not just after.
+      max-file-size: 5MB
+      max-request-size: 5MB
+
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USER}
+    password: ${mail_password:${MAIL_PASSWORD}}
+    properties:
+      # Real SMTP providers (Zone.eu, etc.) require both — that's the safe
+      # default. Local review overrides both to false in
+      # docker-compose.override.yml, pointing at the plain-SMTP Mailpit
+      # catcher instead, so a local run shows real reset/verification emails
+      # without needing real provider credentials.
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${MAIL_SMTP_STARTTLS:true}
+      mail.smtp.starttls.required: ${MAIL_SMTP_STARTTLS:true}
+
+  # OAuth2 client registration (Google login) belongs here once the OAuth2
+  # controller/flow actually lands. Don't add it
+  # back before then: spring-boot-starter-oauth2-client auto-configures a
+  # real ClientRegistration the moment ANY registration.* property is
+  # present, even an empty client-id — which fails app startup whenever
+  # GOOGLE_CLIENT_ID isn't set, taking down every Spring context in the test
+  # suite along with it.
+
+server:
+  port: 8080
+  # We sit behind Caddy, which terminates TLS. Without this, Spring sees every
+  # request as coming from Caddy's IP over plain HTTP — which breaks rate
+  # limiting (everyone shares one IP), audit logs (wrong IP recorded), and any
+  # absolute URL we generate (http:// links in password reset emails).
+  forward-headers-strategy: native
+  error:
+    include-stacktrace: never   # never leak internals to a client
+    include-message: never
+
+app:
+  jwt:
+    # No default. HS256 needs >=256 bits. Generate: openssl rand -base64 48
+    secret: ${jwt_secret:${JWT_SECRET}}
+    issuer: ${JWT_ISSUER:https://shop.ee}
+    access-ttl: PT15M      # ISO-8601 duration. 15 minutes.
+    refresh-ttl: P7D       # 7 days.
+
+  security:
+    # Argon2id parameters, OWASP-recommended baseline.
+    # memory-kb is the important one: it is what makes GPU cracking expensive.
+    # Raising these later does not invalidate existing hashes: each stored hash
+    # records the parameters it was made with. Rehashing older hashes at login is
+    # not implemented yet.
+    argon2:
+      memory-kb: 19456   # 19 MiB
+      iterations: 2
+      parallelism: 1
+
+    # No default — see TotpEncryptionProperties. Generate: openssl rand -base64 32
+    totp:
+      key: ${totp_encryption_key:${TOTP_ENCRYPTION_KEY}}
+
+    # No default — see FieldEncryptionProperties. Encrypts customer PII at
+    # rest (names, addresses, phone numbers on orders and accounts).
+    # LOSING THIS KEY MAKES SEVEN YEARS OF ORDER RECORDS UNREADABLE; back it
+    # up separately from the database. Generate: openssl rand -base64 32
+    field:
+      key: ${field_encryption_key:${FIELD_ENCRYPTION_KEY}}
+
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+
+  # Base URL for links embedded in emails (verify-email, password-reset).
+  # Defaulted, unlike DB_URL/JWT_SECRET: a wrong value here produces an
+  # obviously-broken link in an email, not a silently-misconfigured box
+  # writing to the wrong database.
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+
+  # Where uploaded product images actually land — a writable volume mount
+  # (docker-compose.yml), NOT src/main/resources/static/. Files baked into
+  # the jar at build time can't be written to at runtime; this is deliberately
+  # a separate location from the bundled placeholder SVGs.
+  uploads:
+    product-images-dir: ${PRODUCT_IMAGES_DIR:/app/data/product-images}
+
+  # Where generated invoice PDFs land — a writable volume mount
+  # (docker-compose.yml), same reasoning as app.uploads.product-images-dir.
+  # See InvoiceProperties.
+  invoice:
+    storage-dir: ${INVOICE_STORAGE_DIR:/app/data/invoices}
+
+    # The shop's own billing identity, printed on every invoice. These
+    # values MUST be kept in sync BY HAND with frontend/src/companyInfo.ts —
+    # there is no code-sharing between the TS frontend and this backend, and
+    # nothing enforces the two staying identical.
+    seller:
+      name: "Estonian Shop OÜ"
+      registry-code: "16123456"
+      # No VAT number exists anywhere else in this codebase (companyInfo.ts
+      # doesn't carry one either) — this is an INVENTED placeholder in the
+      # correct Estonian format (EE + 9 digits). Replace with the shop's
+      # real KMKR nr before any invoice reaches a real customer.
+      vat-number: "EE123456789"
+      address: "Pikk tn 1, 10123 Tallinn, Estonia"
+      email: "hello@shop.ee"
+      phone: "+372 5555 5555"
+
+  # Blank secret is a valid, supported state — see RecaptchaProperties. Unlike
+  # DB_URL/JWT_SECRET this has no "app must refuse to boot" requirement: a
+  # missing key degrades bot protection, it does not point the app at the
+  # wrong infrastructure.
+  recaptcha:
+    secret: ${recaptcha_secret:${RECAPTCHA_SECRET:}}
+    verify-url: https://www.google.com/recaptcha/api/siteverify
+    min-score: 0.5   # v3 only; ignored for a v2 checkbox response (no score field)
+
+  # Blank secret-key is a valid, supported state — see StripeProperties.
+  # webhook-secret verifies the Stripe-Signature header on incoming webhooks
+  # (StripeWebhookController); it is NOT the same value as secret-key.
+  stripe:
+    secret-key: ${stripe_secret_key:${STRIPE_SECRET_KEY:}}
+    webhook-secret: ${stripe_webhook_secret:${STRIPE_WEBHOOK_SECRET:}}
+
+  # See GoogleOAuthProperties for why blank client-id/secret is a supported
+  # state, and why this does NOT use spring.security.oauth2.client.*.
+  oauth2:
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${google_client_secret:${GOOGLE_CLIENT_SECRET:}}
+      redirect-uri: ${app.frontend-url}/oauth/google/callback
+      authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+      token-uri: https://oauth2.googleapis.com/token
+      user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+
+  # The Estonian address register (Maa- ja Ruumiamet's In-AKS gazetteer). Public,
+  # no key. A blank URL switches the lookup off and the forms take typed
+  # addresses only. See AddressLookupProperties.
+  address-lookup:
+    gazetteer-url: https://aks.geoportaal.ee/inaks/inaadress/gazetteer
+    timeout: PT3S
+
+  # The frontend build's index.html, which the backend fills in for public pages
+  # (SeoPageController). Mounted read-only in Docker. If it cannot be read, those
+  # pages answer 503 and the proxy serves the static app instead.
+  seo:
+    index-html: /app/frontend/index.html
+
+  # Token-bucket per IP+route, backed by Redis — see
+  # RateLimitConfig/RateLimitService. Tunable operational knobs, not
+  # security-critical secrets, so these get sensible defaults.
+  rate-limit:
+    register:
+      capacity: 5
+      period: PT1H
+    login:
+      capacity: 10
+      period: PT1M
+    refresh:
+      capacity: 30
+      period: PT1M
+    forgot-password:
+      capacity: 5
+      period: PT1H
+    # Both consume a client-supplied one-time token before any authenticated
+    # identity exists — defends against guessing/brute-forcing the token
+    # itself, not just against issuing too many of them.
+    verify-email:
+      capacity: 10
+      period: PT1H
+    password-reset:
+      capacity: 10
+      period: PT1H
+    # Reachable by guests AND authenticated users — enforced per IP AND
+    # (when logged in) per user, see RateLimitService.enforceIpAndUser.
+    checkout:
+      capacity: 10
+      period: PT1M
+    cart-mutation:
+      capacity: 60
+      period: PT1M
+    # Generous: /api/products/suggest fires on every keystroke of a
+    # legitimate type-ahead search, not just once per page load.
+    product-search:
+      capacity: 120
+      period: PT1M
+
+    # Deliberately tight. A legitimate visitor sends one message; anything
+    # sending five an hour from one address is not a customer, and every
+    # message costs the shop an outbound email.
+    contact:
+      capacity: 5
+      period: PT1H
+
+    # Fires per keystroke while a customer types a delivery address, like product
+    # search. Every request also costs a call to a public government service,
+    # which must not be hammered on anyone's behalf.
+    address-lookup:
+      capacity: 60
+      period: PT1M
+
+  # Reservation hold during checkout (DECISIONS.md §3) — see InventoryProperties.
+  inventory:
+    reservation-ttl: PT15M
+    sweep-interval: PT30S
+
+  # Estonian VAT. Configuration, never a constant — the standard rate moved
+  # 20% -> 22% (Jan 2024) -> 24% (Jul 2025) inside eighteen months.
+  # These are the *defaults*; the authoritative rate for any given sale is the
+  # one snapshotted onto the order line at purchase time.
+  tax:
+    default-country: EE
+    rates:
+      STANDARD: 0.24
+      REDUCED_9: 0.09      # books, medicines, press
+      REDUCED_13: 0.13     # accommodation
+      ZERO: 0.00
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never   # health details can leak infrastructure topology
+
+logging:
+  level:
+    ee.shop: ${LOG_LEVEL:INFO}
+    org.springframework.security: INFO

@@ -1,0 +1,236 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shop
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # NOTE: no `ports:` mapping.
+    # In production the database must NOT be reachable from the internet.
+    # Other containers reach it over the internal Docker network by hostname.
+    # For local psql access, use: docker compose exec postgres psql -U shop
+    # (The dev override file below re-exposes it for convenience.)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop -d shop"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Redis has no auth by default and will happily accept commands from anyone
+    # who can reach it. Require a password even on an internal network —
+    # defence in depth, and it costs nothing.
+    command: >
+      sh -c 'redis-server --requirepass "$$(cat /run/secrets/redis_password)"
+             --appendonly yes'
+    secrets:
+      - redis_password
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$(cat /run/secrets/redis_password)\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    # See deploy/rabbitmq-entrypoint.sh's own comment: the upstream image
+    # dropped support for RABBITMQ_DEFAULT_PASS_FILE, so this wrapper reads
+    # the Docker secret and re-exports it as the (still-supported) plain
+    # RABBITMQ_DEFAULT_PASS before handing off to the real entrypoint.
+    entrypoint: ["/rabbitmq-entrypoint.sh"]
+    command: ["rabbitmq-server"]
+    environment:
+      RABBITMQ_DEFAULT_USER: shop
+    secrets:
+      - rabbitmq_password
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+      - ./deploy/rabbitmq-entrypoint.sh:/rabbitmq-entrypoint.sh:ro
+    # NOTE: no `ports:` mapping — same reasoning as postgres/redis above.
+    # The management UI (15672) is a dev convenience only; the override file
+    # re-exposes it locally.
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/shop
+      DB_USER: shop
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: shop
+      JWT_ISSUER: ${JWT_ISSUER}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      # Used to build the Google OAuth redirect_uri (application.yml's
+      # app.frontend-url). Never wired here before — defaulted silently to
+      # http://localhost:5173 in every deploy, including prod, so Google
+      # OAuth redirected back to a dev URL nobody was listening on.
+      FRONTEND_URL: ${FRONTEND_URL}
+      # HikariCP pool size. Wired through explicitly because PERFORMANCE.md
+      # names raising it as the fix for the throughput ceiling — and a knob the
+      # documentation tells you to turn has to actually be connected. Without
+      # this line, setting DB_POOL_MAX in .env changes nothing and the app
+      # silently keeps the default of 10, which is the same class of bug as the
+      # FRONTEND_URL one above.
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USER: ${MAIL_USER}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      # Secrets are NOT passed as env vars. Env vars leak: `docker inspect`
+      # prints them, they appear in crash dumps, and every child process
+      # inherits them. Instead they are mounted as files under /run/secrets
+      # (tmpfs, readable only by this container) and Spring Boot reads them
+      # via `spring.config.import: configtree:/run/secrets/` in application.yml.
+      #
+      # Note the `_FILE` suffix convention used by the postgres/redis images
+      # above is implemented by *those images'* entrypoint scripts. Spring Boot
+      # does not implement it — configtree is Spring's equivalent.
+    secrets:
+      - db_password
+      - redis_password
+      - rabbitmq_password
+      - jwt_secret
+      - totp_encryption_key
+      - field_encryption_key
+      - db_runtime_password
+      - mail_password
+      - google_client_secret
+      - recaptcha_secret
+      - stripe_secret_key
+      - stripe_webhook_secret
+    volumes:
+      # Uploaded product images (ProductImageController). Deliberately NOT
+      # the same path as the bundled placeholder SVGs, which live inside the
+      # jar (src/main/resources/static/) and can't be written to at runtime —
+      # this is a real, persistent, writable directory instead.
+      - product_images:/app/data/product-images
+      # Generated invoice PDFs (InvoiceService) — same reasoning as
+      # product_images: a real, persistent, writable directory.
+      - invoices:/app/data/invoices
+      # The frontend build, read-only. The backend fills each public page into this
+      # index.html (SeoPageController), and Caddy serves the same build's assets, so
+      # the two always agree on the hashed file names.
+      - ./frontend/dist:/app/frontend:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # One-shot: builds the SPA into ./frontend/dist and exits 0 — see
+  # frontend/Dockerfile. Makes `docker compose up` alone produce a fully
+  # working site with no host npm/node install (the "Docker + payment CLI
+  # only" host prerequisite this project targets); caddy below waits for
+  # this to finish before it starts. Day-to-day frontend development still
+  # uses `npm run dev` (fast HMR) — this exists for the Docker-only path a
+  # fresh clone or a prod deploy actually takes.
+  frontend-build:
+    build:
+      context: ./frontend
+    volumes:
+      - ./frontend/dist:/app/dist
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      # Env-var driven (not hardcoded) so local dev's .env can remap these to
+      # unprivileged ports (e.g. 8088/8443) without the override file's
+      # ports list getting APPENDED to this one instead of replacing it —
+      # Compose merges list-type keys like `ports` across -f files by
+      # concatenation, not replacement, so two "ports:" blocks for the same
+      # service both take effect simultaneously. Real Hetzner deploys simply
+      # don't set CADDY_HTTP_PORT/CADDY_HTTPS_PORT, so these default to the
+      # real 80/443. Bound to all interfaces (unlike postgres/redis/backend's
+      # loopback-only dev bindings) both locally and in prod — this is the
+      # one service meant to terminate TLS and be reachable, self-signed
+      # cert or real one.
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Populated by the frontend-build service above before this container
+      # starts (bakes in frontend/.env values like the reCAPTCHA site key).
+      # In local dev the everyday workflow is `npm run dev` on :5173
+      # instead — this mount matters for the Docker-only path (review, prod).
+      - ./frontend/dist:/srv/frontend:ro
+      - caddy_data:/data      # holds the TLS certs — MUST persist, or you will
+      - caddy_config:/config  # re-request certs on every restart and hit
+                              # Let's Encrypt rate limits
+    environment:
+      DOMAIN: ${DOMAIN}
+    depends_on:
+      backend:
+        condition: service_started
+      frontend-build:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  redisdata:
+  rabbitmqdata:
+  caddy_data:
+  caddy_config:
+  product_images:
+  invoices:
+
+# Secrets are files on the host, mode 444 (world-readable, not writable) —
+# see init-secrets.sh for why 400 doesn't work under plain (non-Swarm)
+# `docker compose`. The real access boundary is deploy/secrets/'s own 700.
+# They are NOT in git — deploy/secrets/ is gitignored.
+# Generate with: ./deploy/init-secrets.sh
+secrets:
+  db_password:
+    file: ./deploy/secrets/db_password
+  redis_password:
+    file: ./deploy/secrets/redis_password
+  jwt_secret:
+    file: ./deploy/secrets/jwt_secret
+  totp_encryption_key:
+    file: ./deploy/secrets/totp_encryption_key
+  # Encrypts customer PII at rest. Losing this makes seven years of order
+  # records unreadable — back it up SEPARATELY from the database dump.
+  field_encryption_key:
+    file: ./deploy/secrets/field_encryption_key
+  # The runtime role's password. The application connects with THIS, not with
+  # db_password — see R__runtime_role.sql and DECISIONS.md §8.
+  db_runtime_password:
+    file: ./deploy/secrets/db_runtime_password
+  mail_password:
+    file: ./deploy/secrets/mail_password
+  google_client_secret:
+    file: ./deploy/secrets/google_client_secret
+  recaptcha_secret:
+    file: ./deploy/secrets/recaptcha_secret
+  rabbitmq_password:
+    file: ./deploy/secrets/rabbitmq_password
+  stripe_secret_key:
+    file: ./deploy/secrets/stripe_secret_key
+  stripe_webhook_secret:
+    file: ./deploy/secrets/stripe_webhook_secret
